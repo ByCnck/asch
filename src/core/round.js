@@ -69,7 +69,7 @@ Round.prototype.flush = function (round, cb) {
   library.dbLite.query("delete from mem_round where round = $round", {round: round}, cb);
 }
 
-Round.prototype.directionSwap = function (direction, lastBlock, cb) {
+Round.prototype.directionSwap = function (direction, lastBlock, cb) { // 块回滚时需要调用该函数
   if (direction == 'backward') {
     private.feesByRound = {};
     private.rewardsByRound = {};

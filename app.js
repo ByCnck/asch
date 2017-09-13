@@ -179,8 +179,8 @@ function main() {
       // require(path.resolve(program.execute))(scope);
     }
 
-    scope.bus.message('bind', scope.modules);
-    global.modules = scope.modules
+    scope.bus.message('bind', scope.modules); // 发送事件bind
+    global.modules = scope.modules  // 设置全局变量global的模块
 
     scope.logger.info('Modules ready and launched');
     if (!scope.config.publicIp) {

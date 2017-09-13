@@ -113,7 +113,7 @@ private.attachApi = function () {
     })
   });
 
-  router.get("/blocks/common", function (req, res, next) {
+  router.get("/blocks/common", function (req, res, next) {  // 在peer的数据库中查找commonblock
     res.set(private.headers);
 
     req.sanitize(req.query, {
@@ -143,7 +143,7 @@ private.attachApi = function () {
         return "'" + id + "'";
       });
 
-      if (!escapedIds.length) {
+      if (!escapedIds.length) { // 如果没有提供ids
         report = library.scheme.validate(req.headers, {
           type: "object",
           properties: {
@@ -388,7 +388,7 @@ private.attachApi = function () {
     res.status(200).json({ transactions: modules.transactions.getUnconfirmedTransactionList() });
   });
 
-  router.post("/transactions", function (req, res) {
+  router.post("/transactions", function (req, res) {  // 安全的api，广播交易
     res.set(private.headers);
 
     var peerIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
@@ -567,7 +567,7 @@ Transport.prototype.broadcast = function (config, options, cb) {
   });
 }
 
-Transport.prototype.getFromRandomPeer = function (config, options, cb) {
+Transport.prototype.getFromRandomPeer = function (config, options, cb) {  // 从随机peer获取数据
   if (typeof options == 'function') {
     cb = options;
     options = config;
@@ -605,7 +605,7 @@ Transport.prototype.getFromRandomPeer = function (config, options, cb) {
  *  // Process request
  * });
  */
-Transport.prototype.getFromPeer = function (peer, options, cb) {
+Transport.prototype.getFromPeer = function (peer, options, cb) {  // 从指定peer获取信息
   var url;
   if (options.api) {
     url = '/peer' + options.api

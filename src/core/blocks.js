@@ -358,7 +358,7 @@ private.saveBlock = function (block, cb) {
   });
 }
 
-private.popLastBlock = function (oldLastBlock, callback) {
+private.popLastBlock = function (oldLastBlock, callback) {  // 真正删除块的函数
   library.balancesSequence.add(function (cb) {
     function done(err, previousBlock) {
       if (err) {
@@ -380,7 +380,7 @@ private.popLastBlock = function (oldLastBlock, callback) {
       }
     }
 
-    library.dbLite.query('SAVEPOINT poplastblock');
+    library.dbLite.query('SAVEPOINT poplastblock'); // 保存检查点
     self.loadBlocksPart({ id: oldLastBlock.previousBlock }, function (err, previousBlock) {
       if (err || !previousBlock.length) {
         return done(err || 'previousBlock is null');
@@ -442,9 +442,9 @@ private.getIdSequence = function (height, cb) {
     })
 }
 
-private.getIdSequence2 = function (height, cb) {
+private.getIdSequence2 = function (height, cb) {  // 根据高度获取最新的5个区块id
   library.dbLite.query('SELECT s.height, group_concat(s.id) from ' +
-    '(SELECT id, height from blocks order by height desc limit 5) s',
+    '(SELECT id, height from blocks order by height desc limit 5) s', // 最新高度-5，5个区块id以逗号分隔
     { 'height': height },
     ['firstHeight', 'ids'],
     function (err, rows) {
@@ -515,27 +515,27 @@ private.applyTransaction = function (block, transaction, sender, cb) {
 }
 
 // Public methods
-Blocks.prototype.getCommonBlock = function (peer, height, cb) {
+Blocks.prototype.getCommonBlock = function (peer, height, cb) { // 查找共同区块，每次加载区块的起点，初创世块外
   var commonBlock = null;
   var lastBlockHeight = height;
   var count = 0;
 
   async.whilst(
-    function () {
-      return !commonBlock && count < 30 && lastBlockHeight > 1;
+    function () { // 条件判断函数，不需要回调
+      return !commonBlock && count < 30 && lastBlockHeight > 1; // 这里为真就会一直执行下面那个函数
     },
-    function (next) {
+    function (next) { // next 就是callback，也就是下面那个函数
       count++;
-      private.getIdSequence2(lastBlockHeight, function (err, data) {
-        if (err) {
-          return next(err)
+      private.getIdSequence2(lastBlockHeight, function (err, data) {  // 拿到本地高度-5，和5个区块ids，就是data
+        if (err) {  // getIdSequence2的回调函数
+          return next(err)  // 如果有错误直接执行回调函数next()
         }
         var max = lastBlockHeight;
         lastBlockHeight = data.firstHeight;
-        modules.transport.getFromPeer(peer, {
+        modules.transport.getFromPeer(peer, { // 获取peer的对应5个块数据？
           api: "/blocks/common?ids=" + data.ids + '&max=' + max + '&min=' + lastBlockHeight,
           method: "GET"
-        }, function (err, data) {
+        }, function (err, data) { // getFromPeer的回调函数
           if (err || data.body.error) {
             return next(err || data.body.error.toString());
           }
@@ -544,17 +544,17 @@ Blocks.prototype.getCommonBlock = function (peer, height, cb) {
             return next();
           }
 
-          library.dbLite.query("select previousBlock from blocks where id = $id " + " and height = $height", {
+          library.dbLite.query("select previousBlock from blocks where id = $id " + " and height = $height", {  // 根据commonblock获取前一个区块
             "id": data.body.common.id,
             "height": data.body.common.height
           }, {
               "previousBlock": String
-            }, function (err, rows) {
+            }, function (err, rows) { // query的回调函数
               if (err || !rows.length) {
                 return next(err || "Can't compare blocks");
               }
 
-              if (data.body.common.previousBlock === rows[0].previousBlock) {
+              if (data.body.common.previousBlock === rows[0].previousBlock) { // 对比peer的前一个区块和本地前一个区块是否一致
                 commonBlock = data.body.common;
               }
               next();
@@ -562,7 +562,7 @@ Blocks.prototype.getCommonBlock = function (peer, height, cb) {
         });
       });
     },
-    function (err) {
+    function (err) {  // 回调函数，在 判断函数为假 or 可迭代函数报错 or 可迭代函数完成 后调用
       setImmediate(cb, err, commonBlock);
     }
   )
@@ -584,7 +584,7 @@ Blocks.prototype.getBlock = function (filter, cb) {
   shared.getBlock({ body: filter }, cb);
 }
 
-Blocks.prototype.loadBlocksData = function (filter, options, cb) {
+Blocks.prototype.loadBlocksData = function (filter, options, cb) {  // 
   if (arguments.length < 3) {
     cb = options;
     options = {};
@@ -644,7 +644,7 @@ Blocks.prototype.loadBlocksData = function (filter, options, cb) {
   }, cb);
 };
 
-Blocks.prototype.loadBlocksPart = function (filter, cb) {
+Blocks.prototype.loadBlocksPart = function (filter, cb) { // 
   self.loadBlocksData(filter, function (err, rows) {
     // Notes:
     // If while loading we encounter an error, for example, an invalid signature on a block & transaction, then we need to stop loading and remove all blocks after the last good block. We also need to process all transactions within the block.
@@ -703,7 +703,7 @@ Blocks.prototype.loadBlocksOffset = function (limit, offset, verify, cb) {
   }, cb);
 }
 
-Blocks.prototype.setLastBlock = function (block) {
+Blocks.prototype.setLastBlock = function (block) {  // 设置private.lastBlock
   private.lastBlock = block
   if (global.Config.netVersion === 'mainnet') {
     global.featureSwitch.enableLongId = private.lastBlock.height >= 1700000
@@ -1178,12 +1178,12 @@ Blocks.prototype.loadBlocksFromPeer = function (peer, lastCommonBlockId, cb) {
   )
 }
 
-Blocks.prototype.deleteBlocksBefore = function (block, cb) {
+Blocks.prototype.deleteBlocksBefore = function (block, cb) {  // 区块回滚函数，传进来commomblock
   var blocks = [];
 
   async.whilst(
     function () {
-      return block.height < private.lastBlock.height
+      return block.height < private.lastBlock.height  // commonblock比本地区块高度低，就一直循环
     },
     function (next) {
       blocks.unshift(private.lastBlock);

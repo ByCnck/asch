@@ -531,7 +531,7 @@ Transactions.prototype.getUnconfirmedTransaction = function (id) {
   return private.unconfirmedTransactions[index];
 }
 
-Transactions.prototype.getUnconfirmedTransactionList = function (reverse, limit) {
+Transactions.prototype.getUnconfirmedTransactionList = function (reverse, limit) {  // 获取未确认交易列表
   var a = [];
 
   for (var i = 0; i < private.unconfirmedTransactions.length; i++) {
@@ -540,7 +540,7 @@ Transactions.prototype.getUnconfirmedTransactionList = function (reverse, limit)
     }
   }
 
-  a = reverse ? a.reverse() : a;
+  a = reverse ? a.reverse() : a;  // 如果reverse为真，那么反转数组
 
   if (limit) {
     a.splice(limit);
@@ -564,17 +564,17 @@ Transactions.prototype.hasUnconfirmedTransaction = function (transaction) {
   return index !== undefined && private.unconfirmedTransactions[index] !== false;
 }
 
-Transactions.prototype.processUnconfirmedTransaction = function (transaction, broadcast, cb) {
+Transactions.prototype.processUnconfirmedTransaction = function (transaction, broadcast, cb) {  // 处理未确认交易
   if (!transaction) {
-    return cb("No transaction to process!");
+    return cb("No transaction to process!");  // 如果未确认交易不存在，那么直接return，不执行下面的
   }
   if (!transaction.id) {
-    transaction.id = library.base.transaction.getId(transaction);
+    transaction.id = library.base.transaction.getId(transaction); // 如果无交易id，那么为其生成交易id
   }
-  if (!global.featureSwitch.enableUIA && transaction.type >= 8 && transaction.type <= 14) {
+  if (!global.featureSwitch.enableUIA && transaction.type >= 8 && transaction.type <= 14) { // 如果UIA未开启 && 14 >= 交易类型 >= 8 
     return cb("Feature not activated");
   }
-  if (!global.featureSwitch.enable1_3_0 && ([5, 6, 7, 100].indexOf(transaction.type) !== -1 || transaction.message || transaction.args)) {
+  if (!global.featureSwitch.enable1_3_0 && ([5, 6, 7, 100].indexOf(transaction.type) !== -1 || transaction.message || transaction.args)) {  // 锁仓功能吧
     return cb("Feature not activated");
   }
   // Check transaction indexes
@@ -652,7 +652,7 @@ Transactions.prototype.applyUnconfirmedList = function (ids, cb) {
   }, cb);
 }
 
-Transactions.prototype.undoUnconfirmedList = function (cb) {
+Transactions.prototype.undoUnconfirmedList = function (cb) {  // 回滚未确定的交易？
   var ids = [];
   async.eachSeries(private.unconfirmedTransactions, function (transaction, cb) {
     if (transaction !== false) {
@@ -706,12 +706,12 @@ Transactions.prototype.undoUnconfirmed = function (transaction, cb) {
   });
 }
 
-Transactions.prototype.receiveTransactions = function (transactions, cb) {
+Transactions.prototype.receiveTransactions = function (transactions, cb) {  // 处理未确认交易
   if (private.unconfirmedNumber > constants.maxTxsPerBlock) {
     setImmediate(cb, "Too many transactions");
     return;
   }
-  async.eachSeries(transactions, function (transaction, next) {
+  async.eachSeries(transactions, function (transaction, next) { // 批量处理未确认交易
     self.processUnconfirmedTransaction(transaction, true, next);
   }, function (err) {
     cb(err, transactions);

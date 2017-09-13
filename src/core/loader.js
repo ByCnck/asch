@@ -62,76 +62,78 @@ private.syncTrigger = function (turnOn) {
   }
 }
 
-private.loadFullDb = function (peer, cb) {
+private.loadFullDb = function (peer, cb) {  // 创世块的话，直接从peer加载全部数据
   var peerStr = peer ? ip.fromLong(peer.ip) + ":" + peer.port : 'unknown';
 
-  var commonBlockId = private.genesisBlock.block.id;
+  var commonBlockId = private.genesisBlock.block.id;  // 因为是创世块，所以commomblock只能是这个
 
   library.logger.debug("Loading blocks from genesis from " + peerStr);
 
   modules.blocks.loadBlocksFromPeer(peer, commonBlockId, cb);
 }
 
-private.findUpdate = function (lastBlock, peer, cb) {
-  var peerStr = peer ? ip.fromLong(peer.ip) + ":" + peer.port : 'unknown';
+private.findUpdate = function (lastBlock, peer, cb) { // 查找commonblock然后执行undo或者直接从peer加载新区块
+  var peerStr = peer ? ip.fromLong(peer.ip) + ":" + peer.port : 'unknown';  // str的peer
 
-  library.logger.info("Looking for common block with " + peerStr);
+  library.logger.info("Looking for common block with " + peerStr);  // 查找共同区块
 
-  modules.blocks.getCommonBlock(peer, lastBlock.height, function (err, commonBlock) {
-    if (err || !commonBlock) {
-      library.logger.error("Failed to get common block", err);
-      return cb();
+  modules.blocks.getCommonBlock(peer, lastBlock.height, function (err, commonBlock) {   // 根据本地区块最新高度调用getCommonBlock函数查找共同区块
+    if (err || !commonBlock) {  // 如果获取时有err或者commonblock为空
+      library.logger.error("Failed to get common block", err);  // 记录日志
+      return cb();  // 直接执行findUpdate的回调函数，不执行下面那些逻辑
     }
 
-    library.logger.info("Found common block " + commonBlock.id + " (at " + commonBlock.height + ")" + " with peer " + peerStr + ", last block height is " + lastBlock.height);
-    var toRemove = lastBlock.height - commonBlock.height;
+    console.log('commonBlock:', commonBlock)
+    library.logger.info("Found common block " + commonBlock.id + " (at " + commonBlock.height + ")" + " with peer " + peerStr + ", last block height is " + lastBlock.height);  // 记录日志
+    var toRemove = lastBlock.height - commonBlock.height; // 计算本地高度和commomblock高度差
 
-    if (toRemove >= 5) {
-      library.logger.error("long fork, ban 60 min", peerStr);
-      modules.peer.state(peer.ip, peer.port, 0, 3600);
-      return cb();
+    if (toRemove >= 5) {  // 本地高度和commomblock高度差大于5
+      library.logger.error("long fork, ban 60 min", peerStr); // 如果高度差超过5，说明peer高度太低，记录日志
+      modules.peer.state(peer.ip, peer.port, 0, 3600);  // 本地db更新peer状态为0，该peer不可用的意思
+      return cb();  // 直接执行findUpdate的回调函数，不再进行下面那些逻辑
     }
 
-    var unconfirmedTrs = modules.transactions.getUnconfirmedTransactionList(true);
-    modules.transactions.undoUnconfirmedList(function (err) {
+    var unconfirmedTrs = modules.transactions.getUnconfirmedTransactionList(true);  // 获得未确认交易列表
+    modules.transactions.undoUnconfirmedList(function (err) { // undoUnconfirmedList的回调函数
       if (err) {
         library.logger.error('Failed to undo uncomfirmed transactions', err);
         return process.exit(0);
       }
 
-      function rollbackBlocks(cb) {
-        if (commonBlock.id == lastBlock.id) {
+      function rollbackBlocks(cb) { // 定义回滚块的函数
+        if (commonBlock.id == lastBlock.id) { // 如果本地最新的块id等于commomblockid，那么直接回调，其实就是不需要回滚
           return cb();
         }
 
         async.series([
           function (next) {
-            var currentRound = modules.round.calc(lastBlock.height);
-            var backRound = modules.round.calc(commonBlock.height);
-            var backHeight = commonBlock.height;
-            if (currentRound != backRound || lastBlock.height % 101 === 0) {
-              if (backRound == 1) {
-                backHeight = 1;
-              } else {
-                backHeight = backHeight - backHeight % 101;
+            var currentRound = modules.round.calc(lastBlock.height);  // 本地当前round
+            var backRound = modules.round.calc(commonBlock.height); // 要回滚到的commomblock所在round
+            var backHeight = commonBlock.height;  // 回滚高度就是commomblock高度
+            if (currentRound != backRound || lastBlock.height % 101 === 0) {  // 跨轮回滚或者当前块是本轮最后一个块
+              if (backRound == 1) { // 如果是第1轮
+                backHeight = 1; // 那么直接回滚到高度1，因为这轮只有一个1个高度
+              } else {  // 要回滚到的commomblock所在轮不是1
+                backHeight = backHeight - backHeight % 101; // 回滚高度=上轮最后一个块高度 
               }
-              modules.blocks.getBlock({ height: backHeight }, function (err, result) {
+              
+              modules.blocks.getBlock({ height: backHeight }, function (err, result) {  // 获取回滚区块高度详情
                 if (result && result.block) {
                   commonBlock = result.block;
                 }
                 next(err);
               })
-            } else {
+            } else {  // 其它情况就是同轮内的回滚，回滚到commonblock，并且小于5个块
               next();
             }
           },
           function (next) {
-            library.logger.info('start to roll back blocks before ' + commonBlock.height);
-            modules.round.directionSwap('backward', lastBlock, next);
+            library.logger.info('start to roll back blocks before ' + commonBlock.height);  // 记录回滚日志
+            modules.round.directionSwap('backward', lastBlock, next); // 调用directionSwap去做回滚，删除mem_round表这一轮的信息
           },
           function (next) {
-            library.bus.message('deleteBlocksBefore', commonBlock);
-            modules.blocks.deleteBlocksBefore(commonBlock, next);
+            library.bus.message('deleteBlocksBefore', commonBlock); // 发送事件？
+            modules.blocks.deleteBlocksBefore(commonBlock, next); // 删除区块？
           },
           function (next) {
             modules.round.directionSwap('forward', lastBlock, next);
@@ -142,25 +144,25 @@ private.findUpdate = function (lastBlock, peer, cb) {
             process.exit(1);
             return;
           }
-          cb();
+          cb(); // 回滚没有问题，cb
         });
       }
 
       async.series([
-        async.apply(rollbackBlocks),
-        function (next) {
-          library.logger.debug("Loading blocks from peer " + peerStr);
+        async.apply(rollbackBlocks),  // apply回滚块函数，如果不需要回滚那么直接运行下面的函数
+        function (next) { // 开始从peer加载区块
+          library.logger.debug("Loading blocks from peer " + peerStr);  // 记录日志
 
           modules.blocks.loadBlocksFromPeer(peer, commonBlock.id, function (err, lastValidBlock) {
-            if (err) {
+            if (err) {  // loadBlocksFromPeer的回调函数
               library.logger.error("Failed to load blocks, ban 60 min: " + peerStr, err);
               modules.peer.state(peer.ip, peer.port, 0, 3600);
             }
             next();
           });
         },
-        function (next) {
-          modules.transactions.receiveTransactions(unconfirmedTrs, function (err) {
+        function (next) { // 处理未确认交易
+          modules.transactions.receiveTransactions(unconfirmedTrs, function (err) { // 验证后进行广播？
             if (err) {
               library.logger.error('Failed to redo unconfirmed transactions', err);
             }
@@ -176,7 +178,7 @@ private.loadBlocks = function (lastBlock, cb) {
   modules.transport.getFromRandomPeer({
     api: '/height',
     method: 'GET'
-  }, function (err, data) {
+  }, function (err, data) { // getFromRandomPeer的回调函数
     var peerStr = data && data.peer ? ip.fromLong(data.peer.ip) + ":" + data.peer.port : 'unknown';
     if (err || !data.body) {
       library.logger.log("Failed to get height from peer: " + peerStr);
@@ -185,9 +187,9 @@ private.loadBlocks = function (lastBlock, cb) {
 
     library.logger.info("Check blockchain on " + peerStr);
 
-    data.body.height = parseInt(data.body.height);
+    data.body.height = parseInt(data.body.height);  // peer的高度
 
-    var report = library.scheme.validate(data.body, {
+    var report = library.scheme.validate(data.body, { // 
       type: "object",
       properties: {
         "height": {
@@ -202,12 +204,12 @@ private.loadBlocks = function (lastBlock, cb) {
       return cb();
     }
 
-    if (bignum(modules.blocks.getLastBlock().height).lt(data.body.height)) { // Diff in chainbases
-      private.blocksToSync = data.body.height;
+    if (bignum(modules.blocks.getLastBlock().height).lt(data.body.height)) { // Diff in chainbases 本地高度比peer小？
+      private.blocksToSync = data.body.height;  // 将本地的待同步高度设置为peer的高度
 
-      if (lastBlock.id != private.genesisBlock.block.id) { // Have to find common block
+      if (lastBlock.id != private.genesisBlock.block.id) { // Have to find common block 如果不是创世块开始同步，则需要执行findUpdate
         private.findUpdate(lastBlock, data.peer, cb);
-      } else { // Have to load full db
+      } else { // Have to load full db  // 创世块直接loadFullDb
         private.loadFullDb(data.peer, cb);
       }
     } else {
@@ -447,7 +449,7 @@ private.loadBlockChain = function (cb) {
 }
 
 // Public methods
-Loader.prototype.syncing = function () {
+Loader.prototype.syncing = function () {  // 
   return !!private.syncIntervalId;
 }
 
@@ -455,8 +457,8 @@ Loader.prototype.sandboxApi = function (call, args, cb) {
   sandboxHelper.callMethod(shared, call, args, cb);
 }
 
-Loader.prototype.startSyncBlocks = function () {
-  library.logger.debug('startSyncBlocks enter');
+Loader.prototype.startSyncBlocks = function () {  // 开启同步
+  library.logger.debug('startSyncBlocks enter');  // 记录开启同步日志
   if (private.isActive || !private.loaded || self.syncing()) return;
   private.isActive = true;
   library.sequence.add(function syncBlocks(cb) {
@@ -475,11 +477,11 @@ Loader.prototype.startSyncBlocks = function () {
 }
 
 // Events
-Loader.prototype.onPeerReady = function () {
-  setImmediate(function nextSync() {
-    var lastBlock = modules.blocks.getLastBlock();
-    var lastSlot = slots.getSlotNumber(lastBlock.timestamp);
-    if (slots.getNextSlot() - lastSlot >= 3) {
+Loader.prototype.onPeerReady = function () {  // 接收PeerReady事件
+  setImmediate(function nextSync() {  // 异步递归调用
+    var lastBlock = modules.blocks.getLastBlock();  // 本地最新的区块
+    var lastSlot = slots.getSlotNumber(lastBlock.timestamp);  // 获取最新区块对应的slot
+    if (slots.getNextSlot() - lastSlot >= 3) {  // 如果当前时间对应的slot > 本地最新区块slot 3个高度，就开始执行startSyncBlocks
       self.startSyncBlocks();
     }
     setTimeout(nextSync, 10 * 1000);

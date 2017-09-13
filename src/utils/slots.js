@@ -38,18 +38,18 @@ module.exports = {
     return t + epochTime * 1000;
   },
 
-  getSlotNumber: function (epochTime) {
+  getSlotNumber: function (epochTime) { // 根据区块时间计算slot，每次该出块的时间对应一个slot。每个块都有对应的slot，但不是每个slot都有对应的块（丢块）
     if (epochTime === undefined) {
       epochTime = this.getTime()
     }
-    return Math.floor(epochTime / this.interval);
+    return Math.floor(epochTime / this.interval); // floor() 方法可对一个数进行下舍入    
   },
 
   getSlotTime: function (slot) {
     return slot * this.interval;
   },
 
-  getNextSlot: function () {
+  getNextSlot: function () {  // 根据当前时间计算slot
     var slot = this.getSlotNumber();
 
     return slot + 1;

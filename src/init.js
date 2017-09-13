@@ -212,7 +212,7 @@ module.exports = function(options, done) {
       cb(null, sequence);
     }],
 
-    balancesSequence: ["logger", function (cb, scope) {
+    balancesSequence: ["logger", function (cb, scope) { // 
       var sequence = new Sequence({
         name: "balance",
         onWarning: function (current, limit) {
