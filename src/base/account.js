@@ -697,7 +697,7 @@ Account.prototype.merge = function (address, diff, cb) {
   }
 
   if (diff['balance']) {
-    library.balanceCache.addNativeBalance(address, diff['balance'])
+    library.balanceCache.addNativeBalance(address, diff['balance']) // 本地余额缓存？
   }
 
   this.editable.forEach(function (value) {

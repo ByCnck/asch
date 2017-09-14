@@ -380,11 +380,11 @@ Accounts.prototype.setAccountAndGet = function (data, cb) {
   });
 }
 
-Accounts.prototype.mergeAccountAndGet = function (data, cb) {
+Accounts.prototype.mergeAccountAndGet = function (data, cb) { // 
   var address = data.address || null;
   if (address === null) {
     if (data.publicKey) {
-      address = self.generateAddressByPublicKey2(data.publicKey);
+      address = self.generateAddressByPublicKey2(data.publicKey); // 老地址怎么办？
     } else {
       return cb("Missing address or public key in mergeAccountAndGet");
     }
