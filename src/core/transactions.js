@@ -389,6 +389,8 @@ private.attachStorageApi = function () {
 }
 
 private.list = function (filter, cb) {
+  // 真正的查询函数
+  // console.log('----enter private.list ');
   var sortFields = ['t.id', 't.blockId', 't.amount', 't.fee', 't.type', 't.timestamp', 't.senderPublicKey', 't.senderId', 't.recipientId', 't.confirmations', 'b.height'];
   var params = {}, fields_or = [], owner = "";
   if (filter.blockId) {
@@ -428,9 +430,16 @@ private.list = function (filter, cb) {
     params.message = filter.message
   }
 
-  if (filter.limit >= 0) {
+  if (filter.limit) {
+    // if (100 >= filter.limit > 0) { // library.scheme.validate已经校验过了，100>=limit>=0,所以这里不用再校验了
     params.limit = filter.limit;
+    // } else {
+    //   return cb("Invalid limit. Maximum is 100");
+    // }
+  } else {
+    filter.limit = params.limit = 20;
   }
+
   if (filter.offset >= 0) {
     params.offset = filter.offset;
   }
@@ -451,9 +460,9 @@ private.list = function (filter, cb) {
     }
   }
 
-  if (filter.limit > 100) {
-    return cb("Invalid limit. Maximum is 100");
-  }
+  // if (filter.limit > 100) {
+  //   return cb("Invalid limit. Maximum is 100");
+  // }
 
   var uiaCurrencyJoin = ''
   if (filter.currency) {
@@ -472,7 +481,8 @@ private.list = function (filter, cb) {
       var count = rows.length ? rows[0].count : 0;
 
       // Need to fix 'or' or 'and' in query
-      library.dbLite.query("select t.id, b.height, t.blockId, t.type, t.timestamp, lower(hex(t.senderPublicKey)), t.senderId, t.recipientId, t.amount, t.fee, lower(hex(t.signature)), lower(hex(t.signSignature)), t.signatures, t.args, t.message, (select max(height) + 1 from blocks) - b.height " +
+      library.dbLite.query("select t.id, b.height, t.blockId, t.type, t.timestamp, lower(hex(t.senderPublicKey)), t.senderId, " 
+        + "t.recipientId, t.amount, t.fee, lower(hex(t.signature)), lower(hex(t.signSignature)), t.signatures, t.args, t.message, (select max(height) + 1 from blocks) - b.height " +
         "from trs t " +
         "inner join blocks b on t.blockId = b.id " + uiaCurrencyJoin +
         (fields_or.length || owner ? "where " : "") + " " +
@@ -735,8 +745,10 @@ Transactions.prototype.onBind = function (scope) {
 
 // Shared
 shared.getTransactions = function (req, cb) {
+  // console.log('----enter getTransactions,req is', req);
+  // { body: { limit: 5 }, params: {} }
   var query = req.body;
-  library.scheme.validate(query, {
+  library.scheme.validate(query, {  // 校验查询是否合法
     type: "object",
     properties: {
       blockId: {
@@ -797,17 +809,17 @@ shared.getTransactions = function (req, cb) {
         maximum: 22
       }
     }
-  }, function (err) {
+  }, function (err) { // 校验函数library.scheme.validate的回调函数
     if (err) {
-      return cb(err[0].message);
+      return cb(err[0].message);  // 如果查询不合法，直接回调，并把错误直接抛上去
     }
 
-    private.list(query, function (err, data) {
-      if (err) {
+    private.list(query, function (err, data) {  // private.list真正去查询，并对结果进行回调
+      if (err) {  // 查询回调函数，有错误直接return回调，不执行下面的函数
         return cb("Failed to get transactions");
       }
 
-      cb(null, { transactions: data.transactions, count: data.count });
+      cb(null, { transactions: data.transactions, count: data.count }); // 查询的真实结果给回调函数
     });
   });
 }
