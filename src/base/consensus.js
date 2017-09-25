@@ -14,8 +14,8 @@ function Consensus(scope, cb) {
   cb && setImmediate(cb, null, this);
 }
 
-Consensus.prototype.createVotes = function (keypairs, block) {
-  var hash = this.getVoteHash(block.height, block.id);
+Consensus.prototype.createVotes = function (keypairs, block) {  // 根据密钥对和block获取投票信息
+  var hash = this.getVoteHash(block.height, block.id);  // 拿到本次高度、区块id对应的hash
   var votes = {
     height: block.height,
     id: block.id,
@@ -41,9 +41,9 @@ Consensus.prototype.verifyVote = function (height, id, voteItem) {
   }
 }
 
-Consensus.prototype.getVoteHash = function (height, id) {
+Consensus.prototype.getVoteHash = function (height, id) { // 高度、区块id
   var bytes = new ByteBuffer();
-  bytes.writeLong(height);
+  bytes.writeLong(height);  // 将height写入buffer
   if (global.featureSwitch.enableLongId) {
     bytes.writeString(id)
   } else {
@@ -53,7 +53,7 @@ Consensus.prototype.getVoteHash = function (height, id) {
     }
   }
   bytes.flip();
-  return crypto.createHash('sha256').update(bytes.toBuffer()).digest();
+  return crypto.createHash('sha256').update(bytes.toBuffer()).digest(); // 返回高度、区块id的buffer的Hash信息
 }
 
 Consensus.prototype.hasEnoughVotes = function (votes) {

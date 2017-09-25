@@ -734,7 +734,7 @@ Transactions.prototype.sandboxApi = function (call, args, cb) {
   sandboxHelper.callMethod(shared, call, args, cb);
 }
 
-Transactions.prototype.list = function (query, cb) {
+Transactions.prototype.list = function (query, cb) {  // 将私有查询函数list暴露出去
   private.list(query, cb)
 }
 

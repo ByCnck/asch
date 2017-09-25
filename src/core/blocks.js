@@ -1244,8 +1244,8 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
     }
 
     library.logger.info("Generate new block at height " + (private.lastBlock.height + 1));
-    async.waterfall([
-      function (next) {
+    async.waterfall([ // 顺序执行，前一个函数结果是下一个函数参数，碰到错误或者全部成功 会调用cb
+      function (next) { // 校验该区块是否合法
         self.verifyBlock(block, null, function (err) {
           if (err) {
             next("Can't verify generated block: " + err);
@@ -1254,19 +1254,19 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
           }
         });
       },
-      function (next) {
+      function (next) { // 拿到受托人的密钥对
         modules.delegates.getActiveDelegateKeypairs(block.height, function (err, activeKeypairs) {
           if (err) {
             next("Failed to get active delegate keypairs: " + err);
           } else {
-            next(null, activeKeypairs);
+            next(null, activeKeypairs); // 将密钥对传给下一个函数
           }
         });
       },
       function (activeKeypairs, next) {
         var height = block.height;
         var id = block.id;
-        assert(activeKeypairs && activeKeypairs.length > 0, "Active keypairs should not be empty");
+        assert(activeKeypairs && activeKeypairs.length > 0, "Active keypairs should not be empty"); // 密钥对存在且长度大于0
         library.logger.debug("get active delegate keypairs len: " + activeKeypairs.length);
         var localVotes = library.base.consensus.createVotes(activeKeypairs, block);
         if (library.base.consensus.hasEnoughVotes(localVotes)) {
@@ -1288,6 +1288,7 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
           var serverAddr = library.config.publicIp + ':' + library.config.port;
           var propose;
           try {
+            library.debug('try to createPropose')
             propose = library.base.consensus.createPropose(keypair, block, serverAddr);
           } catch (e) {
             return next("Failed to create propose: " + e.toString());
@@ -1425,7 +1426,7 @@ Blocks.prototype.onReceiveVotes = function (votes) {
   library.sequence.add(function receiveVotes(cb) {
     var totalVotes = library.base.consensus.addPendingVotes(votes);
     if (totalVotes && totalVotes.signatures) {
-      library.logger.debug("receive new votes, total votes number " + totalVotes.signatures.length);
+      library.logger.info("receive new votes, total votes number " + totalVotes.signatures.length);
     }
     if (library.base.consensus.hasEnoughVotes(totalVotes)) {
       var block = library.base.consensus.getPendingBlock();
