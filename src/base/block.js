@@ -187,9 +187,9 @@ Block.prototype.verifySignature = function (block) {
   return res;
 }
 
-Block.prototype.dbSave = function (block, cb) {
+Block.prototype.dbSave = function (block, cb) { // 保存block数据到本地db
   try {
-    var payloadHash = new Buffer(block.payloadHash, 'hex');
+    var payloadHash = new Buffer(block.payloadHash, 'hex'); // payloadHash转成二进制
     var generatorPublicKey = new Buffer(block.generatorPublicKey, 'hex');
     var blockSignature = new Buffer(block.blockSignature, 'hex');
   } catch (e) {
@@ -210,17 +210,17 @@ Block.prototype.dbSave = function (block, cb) {
     payloadHash: payloadHash,
     generatorPublicKey: generatorPublicKey,
     blockSignature: blockSignature
-  }, cb);
+  }, cb); // block信息插入到blocks表中
 }
 
 Block.prototype.objectNormalize = function (block) {
-  for (var i in block) {
+  for (var i in block) {  // 处理block对象中的空元素
     if (block[i] == null || typeof block[i] === 'undefined') {
       delete block[i];
     }
   }
 
-  var report = this.scope.scheme.validate(block, {
+  var report = this.scope.scheme.validate(block, {  // 验证区块数据是否合法
     type: "object",
     properties: {
       id: {
@@ -278,12 +278,12 @@ Block.prototype.objectNormalize = function (block) {
   });
 
   if (!report) {
-    throw Error(this.scope.scheme.getLastError());
+    throw Error(this.scope.scheme.getLastError());  // 如果不合法那么抛出异常错误
   }
 
   try {
     for (var i = 0; i < block.transactions.length; i++) {
-      block.transactions[i] = this.scope.transaction.objectNormalize(block.transactions[i]);
+      block.transactions[i] = this.scope.transaction.objectNormalize(block.transactions[i]);  // 将对象序列化？
     }
   } catch (e) {
     throw Error(e.toString());

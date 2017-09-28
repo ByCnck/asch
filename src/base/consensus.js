@@ -16,12 +16,12 @@ function Consensus(scope, cb) {
 
 Consensus.prototype.createVotes = function (keypairs, block) {  // 根据密钥对和block获取投票信息
   var hash = this.getVoteHash(block.height, block.id);  // 拿到本次高度、区块id对应的hash
-  var votes = {
+  var votes = { // 定义投票对象结构
     height: block.height,
     id: block.id,
-    signatures: []
+    signatures: []  // {key:hex公钥,sig:hex签名}
   };
-  keypairs.forEach(function (el) {
+  keypairs.forEach(function (el) {  // 为什么用forEach，什么时候会有多个？
     votes.signatures.push({
       key: el.publicKey.toString('hex'),
       sig: ed.Sign(hash, el).toString('hex')
@@ -41,11 +41,11 @@ Consensus.prototype.verifyVote = function (height, id, voteItem) {
   }
 }
 
-Consensus.prototype.getVoteHash = function (height, id) { // 高度、区块id
+Consensus.prototype.getVoteHash = function (height, id) { // 根据高度、区块id，返回高度、区块id的buffer的Hash信息
   var bytes = new ByteBuffer();
   bytes.writeLong(height);  // 将height写入buffer
   if (global.featureSwitch.enableLongId) {
-    bytes.writeString(id)
+    bytes.writeString(id) // 将id写入buffer
   } else {
     var idBytes = bignum(id).toBuffer({ size: 8 });
     for (var i = 0; i < 8; i++) {
@@ -56,7 +56,7 @@ Consensus.prototype.getVoteHash = function (height, id) { // 高度、区块id
   return crypto.createHash('sha256').update(bytes.toBuffer()).digest(); // 返回高度、区块id的buffer的Hash信息
 }
 
-Consensus.prototype.hasEnoughVotes = function (votes) {
+Consensus.prototype.hasEnoughVotes = function (votes) { // 如果票数超过全部受托人的 2/3，那么返回 true
   return votes && votes.signatures && votes.signatures.length > slots.delegates * 2 / 3;
 }
 

@@ -345,13 +345,13 @@ private.getByField = function (field, cb) {
     });
 }
 
-private.saveBlock = function (block, cb) {
-  library.base.block.dbSave(block, function (err) {
+private.saveBlock = function (block, cb) {  // 数据持久化存储，block数据落地
+  library.base.block.dbSave(block, function (err) { // insert blocks表
     if (err) {
       return cb(err);
     }
 
-    async.eachSeries(block.transactions, function (transaction, cb) {
+    async.eachSeries(block.transactions, function (transaction, cb) { // 批量insert transactions表
       transaction.blockId = block.id;
       library.base.transaction.dbSave(transaction, cb);
     }, cb);
@@ -856,11 +856,11 @@ Blocks.prototype.verifyBlockVotes = function (block, votes, cb) {
   });
 }
 
-Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, callback) {
+Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, callback) { // 真正处理block数据的，调用其它函数去写库
   private.isActive = true;
   var applyedTrsIdSet = new Set
   function doApplyBlock(cb) {
-    library.dbLite.query('SAVEPOINT applyblock');
+    library.dbLite.query('SAVEPOINT applyblock'); // db保存检查点
 
     function done(err) {
       if (err) {
@@ -900,7 +900,7 @@ Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, call
         });
       }
     }
-    var sortedTrs = block.transactions.sort(function (a, b) {
+    var sortedTrs = block.transactions.sort(function (a, b) { // 交易排序
       if (a.type == 1) {
         return 1;
       }
@@ -927,7 +927,7 @@ Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, call
         function (sender, next) {
           modules.transactions.apply(transaction, block, sender, next);
         }
-      ], function (err) {
+      ], function (err) { // waterfall的回调函数
         modules.transactions.removeUnconfirmedTransaction(transaction.id);
         if (err) {
           var errorContext = {
@@ -942,16 +942,16 @@ Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, call
         applyedTrsIdSet.add(transaction.id)
         nextTr();
       });
-    }, function (err) {
+    }, function (err) { // eachSeries的回调函数
       if (err) {
         return done(err);
       }
       library.logger.debug("apply block ok");
       if (saveBlock) {
-        private.saveBlock(block, function (err) {
+        private.saveBlock(block, function (err) { // block和transactions数据写入到数据库的表中
           if (err) {
             library.logger.error("Failed to save block: " + err);
-            process.exit(1);
+            process.exit(1);  // 如果写库失败，那么直接退出，因为是异步退出担心出问题，一般下面会加一个return
             return;
           }
           library.logger.debug("save block ok");
@@ -987,8 +987,8 @@ Blocks.prototype.applyBlock = function (block, votes, broadcast, saveBlock, call
   }, callback);
 }
 
-Blocks.prototype.processBlock = function (block, votes, broadcast, save, verifyTrs, cb) {
-  if (!private.loaded) {
+Blocks.prototype.processBlock = function (block, votes, broadcast, save, verifyTrs, cb) { // 主要是校验区块中的未确认交易，然后调用applyBlock
+  if (!private.loaded) {  // 判断blockchain是否加载完成
     return setImmediate(cb, "Blockchain is loading");
   }
   try {
@@ -996,18 +996,18 @@ Blocks.prototype.processBlock = function (block, votes, broadcast, save, verifyT
   } catch (e) {
     return setImmediate(cb, "Failed to normalize block: " + e.toString());
   }
-  block.transactions = library.base.block.sortTransactions(block);
-  self.verifyBlock(block, votes, function (err) {
+  block.transactions = library.base.block.sortTransactions(block);  // 对交易进行排序
+  self.verifyBlock(block, votes, function (err) { // 验证该区块和其拿票信息
     if (err) {
       return setImmediate(cb, "Failed to verify block: " + err);
     }
-    library.logger.debug("verify block ok");
+    library.logger.debug("verify block ok,id is " + block.id);
     library.dbLite.query("SELECT id FROM blocks WHERE id=$id", { id: block.id }, ['id'], function (err, rows) {
       if (err) {
         return setImmediate(cb, "Failed to query blocks from db: " + err);
       }
       var bId = rows.length && rows[0].id;
-      if (bId && save) {
+      if (bId && save) {  // 验证该区块id在本地db中是否已经存在
         return setImmediate(cb, "Block already exists: " + block.id);
       }
       modules.delegates.validateBlockSlot(block, function (err) {
@@ -1016,18 +1016,18 @@ Blocks.prototype.processBlock = function (block, votes, broadcast, save, verifyT
           return setImmediate(cb, "Can't verify slot: " + err);
         }
         library.logger.debug("verify block slot ok");
-        async.eachSeries(block.transactions, function (transaction, next) {
-          async.waterfall([
-            function (next) {
+        async.eachSeries(block.transactions, function (transaction, next) { // 开始处理block中的未确认交易，主要是校验是否已存在以及内容是否合法
+          async.waterfall([ // 上一个函数的结果是下一个参数
+            function (next) { // 一般第一个函数没有传参，只有回调函数next
               modules.accounts.setAccountAndGet({ publicKey: transaction.senderPublicKey }, next)
             },
             function (sender, next) {
               try {
-                transaction.id = library.base.transaction.getId(transaction);
+                transaction.id = library.base.transaction.getId(transaction);   // 根据交易信息生成交易id
               } catch (e) {
                 return next(e.toString());
               }
-              transaction.blockId = block.id;
+              transaction.blockId = block.id; // 生成交易信息的block.id
 
               // library.dbLite.query("SELECT id FROM trs WHERE id=$id; SELECT id FROM trs WHERE (senderId=$address and timestamp=$timestamp) limit 1;",
               library.dbLite.query("SELECT id FROM trs WHERE id=$id",
@@ -1039,24 +1039,24 @@ Blocks.prototype.processBlock = function (block, votes, broadcast, save, verifyT
                 function (err, rows) {
                   if (err) {
                     next("Failed to query transaction from db: " + err);
-                  } else if (rows.length > 0) {
-                    modules.transactions.removeUnconfirmedTransaction(transaction.id);
-                    next("Transaction already exists: " + transaction.id);
-                  } else {
+                  } else if (rows.length > 0) { // 如果db中能查到该交易id的信息，说明之前已经被确认过了
+                    modules.transactions.removeUnconfirmedTransaction(transaction.id);  //那么移除这个未确认交易
+                    next("Transaction already exists: " + transaction.id);  // 
+                  } else {  // 如果db中查不到该交易id的信息
                     next(null, sender);
                   }
                 }
               );
             },
             function (sender, next) {
-              if (verifyTrs) {
-                library.base.transaction.verify(transaction, sender, next);
+              if (verifyTrs) {  // 如果需要校验block，这应该是config.json中的配置参数
+                library.base.transaction.verify(transaction, sender, next); // 校验交易内容和sender
               } else {
                 next();
               }
             }
-          ], next);
-        }, function (err) {
+          ], next); // waterfall的回调函数
+        }, function (err) { // eachSeries的回调函数，校验没问题才开始去真正applyBlock block
           if (err) {
             return setImmediate(cb, "Failed to verify transaction: " + err);
           }
@@ -1202,26 +1202,27 @@ Blocks.prototype.deleteBlocksBefore = function (block, cb) {
   );
 }
 
-Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
-  var transactions = modules.transactions.getUnconfirmedTransactionList(false, constants.maxTxsPerBlock);
+Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {  // 生成区块的函数，需要传入密钥对、时间戳、回调函数
+  var transactions = modules.transactions.getUnconfirmedTransactionList(false, constants.maxTxsPerBlock); // 获取未确认的交易
   var ready = [];
   if (library.base.consensus.hasPendingBlock(timestamp)) {
     return setImmediate(cb);
   }
   library.logger.debug("generateBlock enter");
-  async.eachSeries(transactions, function (transaction, next) {
-    modules.accounts.getAccount({ publicKey: transaction.senderPublicKey }, function (err, sender) {
+  async.eachSeries(transactions, function (transaction, next) { 
+    // eachSeries作用类似mapSeries，也是串行执行，唯一不同的是，最后的callback只能收到err/null参数，不会返回每一次iterator的执行结果results.
+    modules.accounts.getAccount({ publicKey: transaction.senderPublicKey }, function (err, sender) {  // 校验交易的发送者是否正确
       if (err || !sender) {
         return next("Invalid sender");
       }
 
       if (library.base.transaction.ready(transaction, sender)) {
-        library.base.transaction.verify(transaction, sender, function (err) {
+        library.base.transaction.verify(transaction, sender, function (err) { // 校验交易
           if (err) {
             library.logger.error("Failed to verify transaction " + transaction.id, err);
-            modules.transactions.removeUnconfirmedTransaction(transaction.id);
+            modules.transactions.removeUnconfirmedTransaction(transaction.id);  // 如果该交易非法，那么直接调用removeUnconfirmedTransaction移除该未确认交易
           } else {
-            ready.push(transaction);
+            ready.push(transaction);  // 如果该交易合法，那么放到ready数组中
           }
           next();
         });
@@ -1229,11 +1230,11 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
         next();
       }
     });
-  }, function () {
-    library.logger.debug("All unconfirmed transactions ready");
+  }, function () {  // eachSeries的回调函数
+    library.logger.info("All unconfirmed transactions ready");  // 打印日志
     var block;
     try {
-      block = library.base.block.create({
+      block = library.base.block.create({ // 真正去生成block信息
         keypair: keypair,
         timestamp: timestamp,
         previousBlock: private.lastBlock,
@@ -1243,9 +1244,9 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
       return setImmediate(cb, e);
     }
 
-    library.logger.info("Generate new block at height " + (private.lastBlock.height + 1));
+    library.logger.info("Generate new block at height " + (private.lastBlock.height + 1));  // 只是打印日志，此时区块还没有广播
     async.waterfall([ // 顺序执行，前一个函数结果是下一个函数参数，碰到错误或者全部成功 会调用cb
-      function (next) { // 校验该区块是否合法
+      function (next) { // 校验新生成的区块是否合法
         self.verifyBlock(block, null, function (err) {
           if (err) {
             next("Can't verify generated block: " + err);
@@ -1254,7 +1255,7 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
           }
         });
       },
-      function (next) { // 拿到受托人的密钥对
+      function (next) { // 根据块高度去拿到受托人的密钥对
         modules.delegates.getActiveDelegateKeypairs(block.height, function (err, activeKeypairs) {
           if (err) {
             next("Failed to get active delegate keypairs: " + err);
@@ -1263,18 +1264,18 @@ Blocks.prototype.generateBlock = function (keypair, timestamp, cb) {
           }
         });
       },
-      function (activeKeypairs, next) {
+      function (activeKeypairs, next) { // 根据密钥对
         var height = block.height;
         var id = block.id;
-        assert(activeKeypairs && activeKeypairs.length > 0, "Active keypairs should not be empty"); // 密钥对存在且长度大于0
-        library.logger.debug("get active delegate keypairs len: " + activeKeypairs.length);
-        var localVotes = library.base.consensus.createVotes(activeKeypairs, block);
-        if (library.base.consensus.hasEnoughVotes(localVotes)) {
+        assert(activeKeypairs && activeKeypairs.length > 0, "Active keypairs should not be empty"); // 判断密钥对存在且长度大于0
+        library.logger.info("get active delegate keypairs len: " + activeKeypairs.length);
+        var localVotes = library.base.consensus.createVotes(activeKeypairs, block); // 本地签名投票，可能有多个受托人？
+        if (library.base.consensus.hasEnoughVotes(localVotes)) {  // 如果得票超过2/3
           self.processBlock(block, localVotes, true, true, false, function (err) {
             if (err) {
               return next("Failed to process confirmed block height: " + height + " id: " + id + " error: " + err);
             }
-            library.logger.log('Forged new block id: ' + id +
+            library.logger.info('Forged new block id: ' + id +
               ' height: ' + height +
               ' round: ' + modules.round.calc(height) +
               ' slot: ' + slots.getSlotNumber(block.timestamp) +
