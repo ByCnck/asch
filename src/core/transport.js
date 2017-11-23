@@ -392,14 +392,22 @@ private.attachApi = function () {
   });
 
   router.post("/transactions", function (req, res) {
+    console.log('req is',req)
     var lastBlock = modules.blocks.getLastBlock();
     var lastSlot = slots.getSlotNumber(lastBlock.timestamp);
+    // 按照现实时间计算的slot（另一种意义上的区块高度，不会因为本次未产块而高度不增加，每隔10秒加1。有些slot可以因为当时未产块是空的）
+    // 如果本地最新区块对应的slot高度 比 此时unix_timestamp计算的slot小3，就说明区块没有同步到最新的
+    // 但因为普通节点被动同步时有问题，有时候1/2分钟更新一次区块，所以前端赚取往往会收到该报错
+    // 目前最新版设置的是6
     if (slots.getNextSlot() - lastSlot >= 3) {
       return res.status(200).json({ success: false, error: "Blockchain not ready" });
     }
 
     res.set(private.headers);
-
+    
+    // 获取交易发送者的ip，优先从代理中获取
+    // 如果是本地访问localhost:4096则获取到127.0.0.1，端口unknown
+    console.log(req.headers['x-forwarded-for'], req.connection.remoteAddress)
     var peerIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     var peerStr = peerIp ? peerIp + ":" + (isNaN(req.headers['port']) ? 'unknown' : req.headers['port']) : 'unknown';
     if (typeof req.body.transaction == 'string') {
@@ -428,13 +436,15 @@ private.attachApi = function () {
     }
 
     library.balancesSequence.add(function (cb) {
+      // 检测交易是否已经是UnconfirmedTransaction的状态
       if (modules.transactions.hasUnconfirmedTransaction(transaction)) {
-        return cb('Already exists');
+        return cb('Already exists' + transaction.id);
       }
       library.logger.log('Received transaction ' + transaction.id + ' from peer ' + peerStr);
       modules.transactions.receiveTransactions([transaction], cb);
     }, function (err, transactions) {
       if (err) {
+        // 如果
         library.logger.warn('Receive invalid transaction', err);
         private.invalidTrsCache.set(transaction.id, true)
         res.status(200).json({ success: false, error: err });

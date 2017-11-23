@@ -521,6 +521,7 @@ private.getById = function (id, cb) {
     });
 }
 
+// 将交易加入到未确认交易数组中
 private.addUnconfirmedTransaction = function (transaction, sender, cb) {
   self.applyUnconfirmed(transaction, sender, function (err) {
     if (err) {
@@ -580,12 +581,15 @@ Transactions.prototype.processUnconfirmedTransaction = function (transaction, br
   if (!transaction) {
     return cb("No transaction to process!");
   }
+  // 有些交易信息传过来的时候没有id，需要现生成
   if (!transaction.id) {
     transaction.id = library.base.transaction.getId(transaction);
   }
+  // 如果UIA功能未开启并且交易类型是UIA相关的，直接报错
   if (!global.featureSwitch.enableUIA && transaction.type >= 8 && transaction.type <= 14) {
     return cb("Feature not activated");
   }
+  // 如果1.3功能未开启
   if (!global.featureSwitch.enable1_3_0 && ([5, 6, 7, 100].indexOf(transaction.type) !== -1 || transaction.message || transaction.args)) {
     return cb("Feature not activated");
   }
@@ -687,10 +691,10 @@ Transactions.prototype.undo = function (transaction, block, sender, cb) {
 }
 
 Transactions.prototype.applyUnconfirmed = function (transaction, sender, cb) {
-  if (!sender && transaction.blockId != genesisblock.block.id) {
+  if (!sender && transaction.blockId != genesisblock.block.id) { // 创世块没有发送者，否则其他没有发送者的区块id都是不合法的
     return cb("Invalid block id");
   } else {
-    if (transaction.requesterPublicKey) {
+    if (transaction.requesterPublicKey) { // 如果有requesterPublicKey，走
       modules.accounts.getAccount({ publicKey: transaction.requesterPublicKey }, function (err, requester) {
         if (err) {
           return cb(err);
@@ -702,7 +706,7 @@ Transactions.prototype.applyUnconfirmed = function (transaction, sender, cb) {
 
         library.base.transaction.applyUnconfirmed(transaction, sender, requester, cb);
       });
-    } else {
+    } else { // 否则走base下的transaction.applyUnconfirmed
       library.base.transaction.applyUnconfirmed(transaction, sender, cb);
     }
   }
@@ -723,6 +727,7 @@ Transactions.prototype.receiveTransactions = function (transactions, cb) {
     setImmediate(cb, "Too many transactions");
     return;
   }
+  // 批量处理未确认的交易并广播出去
   async.eachSeries(transactions, function (transaction, next) {
     self.processUnconfirmedTransaction(transaction, true, next);
   }, function (err) {

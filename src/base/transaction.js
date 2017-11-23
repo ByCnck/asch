@@ -512,14 +512,16 @@ Transaction.prototype.undo = function (trs, block, sender, cb) {
 }
 
 Transaction.prototype.applyUnconfirmed = function (trs, sender, requester, cb) {
+  // 如果只传入3个参数，并且最后一个是函数，那么他就是回调函数
   if (typeof requester === 'function') {
     cb = requester;
   }
 
+  // 如果交易类型没有在已知的列表中，那么就是非法交易类型。已知的交易类型都在utils/transaction-types.js中
   if (!private.types[trs.type]) {
     return setImmediate(cb, "Unknown transaction type " + trs.type);
   }
-
+  // 下面4个都是二级密码相关的判断
   if (!trs.requesterPublicKey && sender.secondSignature && !trs.signSignature && trs.blockId != genesisblock.block.id) {
     return setImmediate(cb, "Failed second signature: " + trs.id);
   }
@@ -536,14 +538,19 @@ Transaction.prototype.applyUnconfirmed = function (trs, sender, requester, cb) {
     return setImmediate(cb, "Account does not have a second signature");
   }
 
+  // 如果是dapp提现，没看懂～
   if (trs.type === 7) return private.types[trs.type].applyUnconfirmed.call(this, trs, sender, cb);
 
   var amount = trs.amount + trs.fee;
 
+  // 手续费从发送者余额扣除，这里是检测余额是否不足
   if (sender.u_balance < amount && trs.blockId != genesisblock.block.id) {
     return setImmediate(cb, "Insufficient balance: " + sender.address);
   }
 
+  // library.balanceCache在init.js中定义
+  // addNativeBalance在utils下的balance-manager.js中定义
+  // 下面这些没看看懂，这里只是处理本地的账户余额？
   library.balanceCache.addNativeBalance(sender.address, -amount)
   this.scope.account.merge(sender.address, { u_balance: -amount }, function (err, sender) {
     if (err) return cb(err);
